@@ -10,6 +10,7 @@ const connectToDB = require("./config/dbconnect");
 const cloudinary = require("cloudinary");
 const cookieparser = require("cookie-parser");
 const cors = require("cors");
+const authRoutes = require("./routes/auth.routes");
 const app = express();
 
 const port = PORT;
@@ -26,6 +27,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieparser());
 app.use(cors());
+app.use("/api/auth", authRoutes);
 
 app.get("/", (req, res) => {
   res.send(`<center><h1>Server is Started...</h1></center>`);
