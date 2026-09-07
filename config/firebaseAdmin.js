@@ -1,22 +1,38 @@
-const admin = require("firebase-admin");
-const { FIREBASE_PROJECT_ID, FIRBASE_CLIENT_EMAIL, FIREBAESE_PRIVATE_KEY } = require("./config");
+﻿const {getApps, initializeApp, cert} = require("firebase-admin/app");
+const {getAuth} = require("firebase-admin/auth");
+const {
+  FIREBASE_PROJECT_ID,
+  FIREBASE_CLIENT_EMAIL,
+  FIREBASE_PRIVATE_KEY,
+} = require("./config");
 
 function getFirebaseAuth() {
-  if (!admin.apps.length) {
-    const projectId = FIREBASE_PROJECT_ID;
-    const clientEmail =FIRBASE_CLIENT_EMAIL;
-    const privateKey = FIREBAESE_PRIVATE_KEY.replace(/\\n/g, "\n");
+  let app = getApps().find(existing => existing.name === "[DEFAULT]");
 
-    if (projectId && clientEmail && privateKey) {
-      admin.initializeApp({
-        credential: admin.credential.cert({projectId, clientEmail, privateKey}),
-      });
-    } else {
-      admin.initializeApp();
+  if (!app) {
+    const credentials = {
+      FIREBASE_PROJECT_ID,
+      FIREBASE_CLIENT_EMAIL,
+      FIREBASE_PRIVATE_KEY,
+    };
+    const missing = Object.entries(credentials)
+      .filter(([, value]) => typeof value !== "string" || !value.trim())
+      .map(([name]) => name);
+
+    if (missing.length) {
+      throw new Error(`Missing Firebase Admin configuration: ${missing.join(", ")}`);
     }
+
+    app = initializeApp({
+      credential: cert({
+        projectId: FIREBASE_PROJECT_ID.trim(),
+        clientEmail: FIREBASE_CLIENT_EMAIL.trim(),
+        privateKey: FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+      }),
+    });
   }
 
-  return admin.auth();
+  return getAuth(app);
 }
 
 module.exports = {getFirebaseAuth};
