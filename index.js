@@ -1,4 +1,4 @@
-require("dotenv").config();
+﻿require("dotenv").config();
 const express = require("express");
 const {
   PORT,
@@ -11,6 +11,7 @@ const cloudinary = require("cloudinary");
 const cookieparser = require("cookie-parser");
 const cors = require("cors");
 const authRoutes = require("./routes/auth.routes");
+const userRoutes = require("./routes/user.routes");
 const app = express();
 
 const port = PORT;
@@ -28,6 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieparser());
 app.use(cors());
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.send(`<center><h1>Server is Started...</h1></center>`);
@@ -36,3 +38,4 @@ app.get("/", (req, res) => {
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
+
