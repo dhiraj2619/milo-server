@@ -1,4 +1,4 @@
-const User = require("../models/User.model");
+﻿const User = require("../models/User.model");
 const {getFirebaseAuth} = require("../config/firebaseAdmin");
 
 const firebaseApiUrl = action => {
@@ -70,7 +70,7 @@ const verifyFirebaseOTP = async (req, res) => {
 
 const verifyFirebaseIdToken = async (req, res) => {
   try {
-    const {idToken, nickname, gender} = req.body || {};
+    const {idToken, nickname, gender, languages} = req.body || {};
     if (!idToken) {
       return res.status(400).json({success: false, message: "idToken is required."});
     }
@@ -81,17 +81,32 @@ const verifyFirebaseIdToken = async (req, res) => {
       return res.status(401).json({success: false, message: "A valid Firebase phone ID token is required."});
     }
 
-    let user = await User.findOne({firebaseUid: decodedToken.uid});
-    let isNewUser = !user;
-    if (!user && nickname && ["male", "female"].includes(gender)) {
-      user = await User.create({
-        firebaseUid: decodedToken.uid,
-        phone,
-        nickname: String(nickname).trim(),
-        gender,
-      });
-      isNewUser = false;
+    const hasProfile = nickname !== undefined || gender !== undefined || languages !== undefined;
+    let profile;
+    if (hasProfile) {
+      const allowedLanguages = ["Hindi", "Marathi", "English", "Bengali", "Tamil", "Telugu", "Kannada", "Gujarati", "Malayalam", "Punjabi", "Urdu", "Odia", "Assamese"];
+      if (typeof nickname !== "string" || !nickname.trim() || nickname.trim().length > 20) {
+        return res.status(400).json({success: false, message: "Nickname must contain 1 to 20 characters."});
+      }
+      if (!["male", "female", "other"].includes(gender)) {
+        return res.status(400).json({success: false, message: "Select a valid gender."});
+      }
+      if (!Array.isArray(languages) || !languages.length || languages.length > allowedLanguages.length || languages.some(language => !allowedLanguages.includes(language))) {
+        return res.status(400).json({success: false, message: "Select one or more supported languages."});
+      }
+      profile = {nickname: nickname.trim(), gender, languages: [...new Set(languages)]};
     }
+
+    let user = await User.findOne({firebaseUid: decodedToken.uid});
+    if (profile) {
+      if (user) {
+        user.set(profile);
+        await user.save();
+      } else {
+        user = await User.create({firebaseUid: decodedToken.uid, phone, ...profile});
+      }
+    }
+    const isNewUser = !user;
 
     return res.status(200).json({
       success: true,
@@ -100,8 +115,16 @@ const verifyFirebaseIdToken = async (req, res) => {
     });
   } catch (error) {
     console.error("Firebase ID token verification error:", error);
-    return res.status(401).json({success: false, message: "Invalid or expired Firebase ID token."});
+    if (["auth/id-token-expired", "auth/id-token-revoked", "auth/invalid-id-token", "auth/argument-error", "auth/user-disabled", "auth/user-not-found"].includes(error.code)) {
+      return res.status(401).json({success: false, message: "Your sign-in session is invalid or expired. Please sign in again."});
+    }
+    if (error.name === "ValidationError") {
+      return res.status(400).json({success: false, message: "Your profile details are invalid. Please check them and retry."});
+    }
+    return res.status(503).json({success: false, message: "Unable to complete sign-in or save your profile right now. Please try again."});
   }
 };
 
 module.exports = {sendFirebaseOTP, verifyFirebaseOTP, verifyFirebaseIdToken};
+
+
