@@ -22,7 +22,7 @@ const saveUser = async (req, res) => {
     const user = await User.findOneAndUpdate(
       {firebaseUid: decoded.uid},
       {$set: {profileCompleted: true, nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number}, $setOnInsert: {firebaseUid: decoded.uid}},
-      {upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true},
+      {upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true},
     );
     const persistedUser = await User.findOne({_id: user._id, firebaseUid: decoded.uid}).lean();
     if (!persistedUser || persistedUser.profileCompleted !== true || persistedUser.nickname !== nickname.trim() || persistedUser.gender !== gender || !languages.every(language => persistedUser.languages.includes(language))) {
@@ -42,5 +42,6 @@ const saveUser = async (req, res) => {
 };
 
 module.exports = {saveUser};
+
 
 

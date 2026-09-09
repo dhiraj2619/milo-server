@@ -1,5 +1,6 @@
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
+const MONGODB_NAME = process.env.MONGODB_NAME;
 const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME;
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY;
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET;
@@ -16,4 +17,5 @@ module.exports = {
   FIREBASE_PROJECT_ID,
   FIREBASE_CLIENT_EMAIL,
   FIREBASE_PRIVATE_KEY,
+  MONGODB_NAME,
 };
