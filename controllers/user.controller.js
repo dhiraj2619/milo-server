@@ -21,11 +21,11 @@ const saveUser = async (req, res) => {
     }
     const user = await User.findOneAndUpdate(
       {firebaseUid: decoded.uid},
-      {$set: {nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number}, $setOnInsert: {firebaseUid: decoded.uid}},
+      {$set: {profileCompleted: true, nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number}, $setOnInsert: {firebaseUid: decoded.uid}},
       {upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true},
     );
     const persistedUser = await User.findOne({_id: user._id, firebaseUid: decoded.uid}).lean();
-    if (!persistedUser || persistedUser.nickname !== nickname.trim() || persistedUser.gender !== gender || !languages.every(language => persistedUser.languages.includes(language))) {
+    if (!persistedUser || persistedUser.profileCompleted !== true || persistedUser.nickname !== nickname.trim() || persistedUser.gender !== gender || !languages.every(language => persistedUser.languages.includes(language))) {
       throw new Error("Profile read-back did not match saved values");
     }
     console.info("Profile saved", {userId: String(persistedUser._id), database: User.db.name, collection: User.collection.name});
@@ -42,4 +42,5 @@ const saveUser = async (req, res) => {
 };
 
 module.exports = {saveUser};
+
 

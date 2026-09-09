@@ -107,11 +107,12 @@ const verifyFirebaseIdToken = async (req, res) => {
       }
     }
     const isNewUser = !user;
+    const profileCompleted = !!(user && user.profileCompleted === true && user.nickname?.trim() && ["male", "female", "other"].includes(user.gender) && user.languages?.length);
 
     return res.status(200).json({
       success: true,
       message: "Phone authentication successful.",
-      data: {firebaseUid: decodedToken.uid, phone, user, isNewUser},
+      data: {firebaseUid: decodedToken.uid, phone, user, isNewUser, profileCompleted},
     });
   } catch (error) {
     console.error("Firebase ID token verification error:", error);
@@ -126,5 +127,6 @@ const verifyFirebaseIdToken = async (req, res) => {
 };
 
 module.exports = {sendFirebaseOTP, verifyFirebaseOTP, verifyFirebaseIdToken};
+
 
 
