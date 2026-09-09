@@ -24,7 +24,12 @@ const saveUser = async (req, res) => {
       {$set: {nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number}, $setOnInsert: {firebaseUid: decoded.uid}},
       {upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true},
     );
-    return res.status(200).json({success: true, message: "Profile saved successfully.", data: {user}});
+    const persistedUser = await User.findOne({_id: user._id, firebaseUid: decoded.uid}).lean();
+    if (!persistedUser || persistedUser.nickname !== nickname.trim() || persistedUser.gender !== gender || !languages.every(language => persistedUser.languages.includes(language))) {
+      throw new Error("Profile read-back did not match saved values");
+    }
+    console.info("Profile saved", {userId: String(persistedUser._id), database: User.db.name, collection: User.collection.name});
+    return res.status(200).json({success: true, message: "Profile saved successfully.", data: {user: persistedUser}});
   } catch (error) {
     console.error("Save user error:", error);
     if (["auth/id-token-expired", "auth/id-token-revoked", "auth/invalid-id-token", "auth/argument-error", "auth/user-disabled", "auth/user-not-found"].includes(error.code)) {
@@ -37,3 +42,4 @@ const saveUser = async (req, res) => {
 };
 
 module.exports = {saveUser};
+
