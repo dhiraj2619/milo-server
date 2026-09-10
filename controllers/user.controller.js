@@ -1,9 +1,16 @@
 ﻿const User = require("../models/User.model");
 const {getFirebaseAuth} = require("../config/firebaseAdmin");
 
+const authenticate = async req => {
+  const authorization = req.headers.authorization || "";
+  const idToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : req.body?.idToken;
+  if (!idToken) throw Object.assign(new Error("Please sign in again."), {status: 401});
+  return getFirebaseAuth().verifyIdToken(idToken, true);
+};
+
 const saveUser = async (req, res) => {
   try {
-    const {idToken, nickname, gender, languages} = req.body || {};
+    const {idToken, nickname, gender, languages, avatarSeed, avatarStyle} = req.body || {};
     if (!idToken) return res.status(401).json({success: false, message: "Please sign in again."});
     const decoded = await getFirebaseAuth().verifyIdToken(idToken, true);
     if (!decoded.phone_number || decoded.firebase?.sign_in_provider !== "phone") {
@@ -21,7 +28,7 @@ const saveUser = async (req, res) => {
     }
     const user = await User.findOneAndUpdate(
       {firebaseUid: decoded.uid},
-      {$set: {profileCompleted: true, nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number}, $setOnInsert: {firebaseUid: decoded.uid}},
+      {$set: {profileCompleted: true, nickname: nickname.trim(), gender, languages: [...new Set(languages)], phone: decoded.phone_number, avatarSeed: typeof avatarSeed === "string" ? avatarSeed : "milo-user", avatarStyle: avatarStyle || null}, $setOnInsert: {firebaseUid: decoded.uid}},
       {upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true},
     );
     const persistedUser = await User.findOne({_id: user._id, firebaseUid: decoded.uid}).lean();
@@ -41,7 +48,30 @@ const saveUser = async (req, res) => {
   }
 };
 
-module.exports = {saveUser};
+const getMyProfile = async (req, res) => {
+  try {
+    const decoded = await authenticate(req);
+    const user = await User.findOne({firebaseUid: decoded.uid});
+    if (!user) return res.status(404).json({success: false, message: "Profile not found."});
+    return res.json({success: true, data: {user}});
+  } catch (error) {
+    return res.status(error.status || 401).json({success: false, message: error.message || "Unable to load profile."});
+  }
+};
 
+const updateMyProfile = async (req, res) => {
+  try {
+    const decoded = await authenticate(req);
+    const {avatarSeed, avatarStyle} = req.body || {};
+    if (typeof avatarSeed !== "string" || !avatarSeed.trim() || avatarSeed.length > 100) return res.status(400).json({success: false, message: "Choose a valid avatar."});
+    const user = await User.findOneAndUpdate({firebaseUid: decoded.uid}, {$set: {avatarSeed: avatarSeed.trim(), avatarStyle: avatarStyle || null}}, {new: true, runValidators: true});
+    if (!user) return res.status(404).json({success: false, message: "Profile not found."});
+    return res.json({success: true, data: {user}});
+  } catch (error) {
+    return res.status(error.status || 401).json({success: false, message: error.message || "Unable to update profile."});
+  }
+};
+
+module.exports = {saveUser, getMyProfile, updateMyProfile};
 
 
