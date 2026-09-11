@@ -1,6 +1,9 @@
 ﻿const User = require("../models/User.model");
 const {getFirebaseAuth} = require("../config/firebaseAdmin");
 
+const PUBLIC_PROFILE_FIELDS =
+  'nickname gender languages avatarSeed avatarStyle photoUrl isOnline lastSeen';
+
 const authenticate = async req => {
   const authorization = req.headers.authorization || "";
   const idToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : req.body?.idToken;
@@ -71,6 +74,18 @@ const updateMyProfile = async (req, res) => {
     return res.status(error.status || 401).json({success: false, message: error.message || "Unable to update profile."});
   }
 };
+
+const getDiscoverProfiles=async(req,res)=>{
+  try {
+       const decoded = await authenticate(req);
+
+       const page = Math.max(Number.parseInt(req.query.page,10) || 1,1);
+
+       const limit = Math.min(Math.max(Number))
+  } catch (error) {
+    
+  }
+}
 
 module.exports = {saveUser, getMyProfile, updateMyProfile};
 
