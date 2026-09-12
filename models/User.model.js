@@ -38,6 +38,7 @@ const userSchema = new mongoose.Schema(
     ],
     avatarSeed: {type: String, default: 'milo-user', trim: true, maxlength: 100},
     avatarStyle: {type: mongoose.Schema.Types.Mixed, default: null},
+    photoUrl: {type: String, default: null, trim: true},
 
     profileCompleted: {type: Boolean, default: false},
     isOnline: {
