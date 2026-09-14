@@ -104,7 +104,7 @@ const saveUser = async (req, res) => {
           avatarStyle: avatarStyle || null,
           referralCode: existingUser?.referralCode || generatedReferralCode,
         },
-        $setOnInsert: { firebaseUid: decoded.uid, referralCode: generatedReferralCode, referredBy: referrer?._id || null },
+        $setOnInsert: { firebaseUid: decoded.uid, referredBy: referrer?._id || null },
       },
       {
         upsert: true,
