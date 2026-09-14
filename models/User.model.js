@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema(
     avatarSeed: {type: String, default: 'milo-user', trim: true, maxlength: 100},
     avatarStyle: {type: mongoose.Schema.Types.Mixed, default: null},
     photoUrl: {type: String, default: null, trim: true},
+    coinBalance: {type: Number, default: 0, min: 0},
+    lastDailyCoinClaimAt: {type: Date, default: null},
+    referralCode: {type: String, unique: true, sparse: true, trim: true, uppercase: true},
+    referredBy: {type: mongoose.Schema.Types.ObjectId, ref: "User", default: null},
 
     profileCompleted: {type: Boolean, default: false},
     isOnline: {

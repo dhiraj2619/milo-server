@@ -1,6 +1,9 @@
 ﻿const User = require("../models/User.model");
 const { getFirebaseAuth } = require("../config/firebaseAdmin");
 
+const crypto = require("crypto");
+const {creditCoins} = require("../services/coin.service");
+
 const PUBLIC_PROFILE_FIELDS =
   "nickname gender languages avatarSeed avatarStyle photoUrl isOnline lastSeen";
 
@@ -14,9 +17,17 @@ const authenticate = async (req) => {
   return getFirebaseAuth().verifyIdToken(idToken, true);
 };
 
+const createReferralCode = async () => {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const referralCode = `MILO${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    if (!(await User.exists({referralCode}))) return referralCode;
+  }
+  throw new Error("Unable to create a referral code. Please retry.");
+};
+
 const saveUser = async (req, res) => {
   try {
-    const { idToken, nickname, gender, languages, avatarSeed, avatarStyle } =
+    const { idToken, nickname, gender, languages, avatarSeed, avatarStyle, referralCode } =
       req.body || {};
     if (!idToken)
       return res
@@ -73,6 +84,13 @@ const saveUser = async (req, res) => {
         message: "Select one or more supported languages.",
       });
     }
+    const existingUser = await User.findOne({firebaseUid: decoded.uid}).lean();
+    let referrer = null;
+    if (!existingUser && referralCode?.trim()) {
+      referrer = await User.findOne({referralCode: referralCode.trim().toUpperCase(), profileCompleted: true, status: "active"});
+      if (!referrer) return res.status(400).json({success: false, message: "This referral code is invalid."});
+    }
+    const generatedReferralCode = existingUser?.referralCode || await createReferralCode();
     const user = await User.findOneAndUpdate(
       { firebaseUid: decoded.uid },
       {
@@ -84,8 +102,9 @@ const saveUser = async (req, res) => {
           phone: decoded.phone_number,
           avatarSeed: typeof avatarSeed === "string" ? avatarSeed : "milo-user",
           avatarStyle: avatarStyle || null,
+          referralCode: existingUser?.referralCode || generatedReferralCode,
         },
-        $setOnInsert: { firebaseUid: decoded.uid },
+        $setOnInsert: { firebaseUid: decoded.uid, referralCode: generatedReferralCode, referredBy: referrer?._id || null },
       },
       {
         upsert: true,
@@ -94,7 +113,7 @@ const saveUser = async (req, res) => {
         setDefaultsOnInsert: true,
       },
     );
-    const persistedUser = await User.findOne({
+    let persistedUser = await User.findOne({
       _id: user._id,
       firebaseUid: decoded.uid,
     }).lean();
@@ -106,6 +125,14 @@ const saveUser = async (req, res) => {
       !languages.every((language) => persistedUser.languages.includes(language))
     ) {
       throw new Error("Profile read-back did not match saved values");
+    }
+    if (!existingUser) {
+      await creditCoins({userId: persistedUser._id, type: "welcome_bonus", amount: 100, idempotencyKey: `welcome:${persistedUser._id}`});
+      if (referrer) {
+        await creditCoins({userId: persistedUser._id, type: "referral_friend_bonus", amount: 100, idempotencyKey: `referral-friend:${persistedUser._id}`, referenceUser: referrer._id});
+        await creditCoins({userId: referrer._id, type: "referrer_signup_bonus", amount: 200, idempotencyKey: `referrer-signup:${persistedUser._id}`, referenceUser: persistedUser._id});
+      }
+      persistedUser = await User.findById(persistedUser._id).lean();
     }
     console.info("Profile saved", {
       userId: String(persistedUser._id),
@@ -154,11 +181,15 @@ const saveUser = async (req, res) => {
 const getMyProfile = async (req, res) => {
   try {
     const decoded = await authenticate(req);
-    const user = await User.findOne({ firebaseUid: decoded.uid });
+    let user = await User.findOne({ firebaseUid: decoded.uid });
     if (!user)
       return res
         .status(404)
         .json({ success: false, message: "Profile not found." });
+    if (!user.referralCode) {
+      user.referralCode = await createReferralCode();
+      await user.save();
+    }
     return res.json({ success: true, data: { user } });
   } catch (error) {
     return res.status(error.status || 401).json({
