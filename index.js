@@ -1,4 +1,4 @@
-﻿require("dotenv").config();
+require("dotenv").config();
 const http = require("http");
 const express = require("express");
 const {
@@ -14,6 +14,7 @@ const cors = require("cors");
 const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const coinRoutes = require("./routes/coin.routes");
+const chatRoutes = require("./routes/chat.routes");
 const { Server } = require("socket.io");
 const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
@@ -46,6 +47,7 @@ app.use(cors());
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/coins", coinRoutes);
+app.use("/api/chats", chatRoutes);
 
 io.use(async (socket, next) => {
   try {
