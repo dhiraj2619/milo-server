@@ -32,6 +32,7 @@ const io = new Server(server, {
 
 const activeSocketsByUser = new Map();
 
+app.set('io', io);
 connectToDB();
 
 cloudinary.config({
@@ -66,6 +67,7 @@ io.use(async (socket, next) => {
 
 io.on("connection", async (socket) => {
   const firebaseUid = socket.firebaseUser.uid;
+  socket.join(firebaseUid);
 
   if (!activeSocketsByUser.has(firebaseUid)) {
     activeSocketsByUser.set(firebaseUid, new Set());

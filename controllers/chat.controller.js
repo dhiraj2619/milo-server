@@ -53,7 +53,11 @@ const sendMessage = async (req, res) => {
     if (typeof text !== 'string' || !text.trim() || text.trim().length > 2000) return res.status(400).json({success: false, message: 'Enter a valid message.'});
     const message = {sender: sender._id, text: text.trim(), type, readBy: [sender._id]};
     const chat = await Chat.findOneAndUpdate({participants: {$all: [sender._id, recipient._id]}, $expr: {$eq: [{$size: '$participants'}, 2]}}, {$set: {lastMessage: message}, $push: {messages: message}}, {new: true});
-    if (chat) return res.status(201).json({success: true, data: {chatId: String(chat._id)}});
+    if (chat) {
+      const io = req.app.get('io');
+      io?.to(sender.firebaseUid).to(recipient.firebaseUid).emit('chat:updated', {chatId: String(chat._id)});
+      return res.status(201).json({success: true, data: {chatId: String(chat._id)}});
+    }
     const created = await Chat.create({participants: [sender._id, recipient._id], messages: [message], lastMessage: message});
     return res.status(201).json({success: true, data: {chatId: String(created._id)}});
   } catch (error) {
