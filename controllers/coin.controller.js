@@ -40,7 +40,7 @@ const claimDailyCoins = async (req, res) => {
       const nextClaimAt = new Date(new Date(existingUser.lastDailyCoinClaimAt).getTime() + DAILY_CLAIM_INTERVAL_MS);
       return res.status(409).json({success: false, message: "Your daily coins are not ready yet.", data: {nextClaimAt}});
     }
-    CoinTransaction.create({user: user._id, type: "daily_claim", amount: DAILY_COIN_REWARD, idempotencyKey: `daily:${user._id}:${claimedAt.getTime()}`}).catch(error => console.error("Daily coin transaction audit error:", error));
+    CoinTransaction.create({user: user._id, direction: "credit", type: "daily_claim", amount: DAILY_COIN_REWARD, balanceAfter: user.coinBalance, idempotencyKey: `daily:${user._id}:${claimedAt.getTime()}`}).catch(error => console.error("Daily coin transaction audit error:", error));
     return res.json({success: true, message: `${DAILY_COIN_REWARD} daily coins claimed.`, data: {coinBalance: user.coinBalance, claimedAt, nextClaimAt: new Date(claimedAt.getTime() + DAILY_CLAIM_INTERVAL_MS)}});
   } catch (error) {
     return res.status(error.status || 503).json({success: false, message: error.message || "Unable to claim daily coins."});

@@ -1,4 +1,4 @@
-const { default: mongoose } = require("mongoose");
+const mongoose = require("mongoose");
 
 const coinTransactionSchema = new mongoose.Schema(
   {
@@ -20,7 +20,9 @@ const coinTransactionSchema = new mongoose.Schema(
       enum: [
         'welcome_bonus',
         'daily_claim',
-        'referral_bonus',
+        'referral_friend_bonus',
+        'referrer_signup_bonus',
+        'referrer_first_purchase_bonus',
         'coin_purchase',
         'audio_call_charge',
         'video_call_charge',
@@ -54,9 +56,17 @@ const coinTransactionSchema = new mongoose.Schema(
       default: null,
     },
 
+    referenceUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    paymentId: {type: String, default: null, trim: true},
+
     metadata: {type: mongoose.Schema.Types.Mixed, default: {}},
   },
   {timestamps: true},
 );
 
-module.exports = mongoose.model("CoinTransaction",coinTransactionSchema)
+module.exports = mongoose.model("CoinTransaction", coinTransactionSchema);
