@@ -15,6 +15,7 @@ const authRoutes = require("./routes/auth.routes");
 const userRoutes = require("./routes/user.routes");
 const coinRoutes = require("./routes/coin.routes");
 const chatRoutes = require("./routes/chat.routes");
+const commerceRoutes = require("./routes/commerce.routes");
 const { Server } = require("socket.io");
 const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
@@ -49,6 +50,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/coins", coinRoutes);
 app.use("/api/chats", chatRoutes);
+app.use("/api/commerce", commerceRoutes);
 
 io.use(async (socket, next) => {
   try {
