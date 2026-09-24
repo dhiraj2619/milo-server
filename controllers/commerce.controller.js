@@ -1,4 +1,4 @@
-const CoinPackage = require("../models/CoinPackage.model");
+const CoinStore = require("../models/CoinStore.model");
 const SubscriptionPlan = require("../models/SubscriptionPlan.model");
 const Subscription = require("../models/Subscription.model");
 
@@ -9,7 +9,7 @@ const respondError = (res, error, message) =>
       success: false,
       message:
         error?.code === 11000
-          ? "A record with that code already exists."
+          ? "A record with the same unique value already exists."
           : error.message || message,
     });
 const adminQuery = (req) =>
@@ -17,57 +17,70 @@ const adminQuery = (req) =>
     ? {}
     : { isActive: true };
 
-const getCoinPackages = async (req, res) => {
-  try {
-    const packages = await CoinPackage.find(adminQuery(req))
-      .sort({ sortOrder: 1, coins: 1 })
-      .lean();
-    res.json({ success: true, data: { packages } });
-  } catch (error) {
-    respondError(res, error, "Unable to load coin packages.");
+const priceOffFor = (originalPrice, discountPrice) => {
+  const original = Number(originalPrice);
+  const discounted = Number(discountPrice);
+  if (!Number.isFinite(original) || !Number.isFinite(discounted) || original < 0 || discounted < 0 || discounted > original) {
+    throw new Error("Original price must be greater than or equal to discount price.");
   }
+  return original > 0 ? Number((((original - discounted) / original) * 100).toFixed(2)) : 0;
 };
-const createCoinPackage = async (req, res) => {
-  try {
-    const coinPackage = await CoinPackage.create(req.body);
-    res.status(201).json({ success: true, data: { coinPackage } });
-  } catch (error) {
-    respondError(res, error, "Unable to create coin package.");
-  }
+
+const coinStorePayload = (body = {}) => {
+  const { coins, discountPrice, originalPrice, isPopular, isActive, sortOrder } = body;
+  return {
+    coins,
+    discountPrice,
+    originalPrice,
+    priceOff: priceOffFor(originalPrice, discountPrice),
+    ...(isPopular !== undefined && { isPopular }),
+    ...(isActive !== undefined && { isActive }),
+    ...(sortOrder !== undefined && { sortOrder }),
+  };
 };
-const updateCoinPackage = async (req, res) => {
+
+const getCoinStore = async (req, res) => {
   try {
-    const coinPackage = await CoinPackage.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true },
-    );
-    if (!coinPackage)
-      return res
-        .status(404)
-        .json({ success: false, message: "Coin package not found." });
-    res.json({ success: true, data: { coinPackage } });
+    const coinStores = await CoinStore.find(adminQuery(req)).sort({ sortOrder: 1, coins: 1 }).lean();
+    res.json({ success: true, data: { coinStores } });
   } catch (error) {
-    respondError(res, error, "Unable to update coin package.");
-  }
-};
-const deleteCoinPackage = async (req, res) => {
-  try {
-    const coinPackage = await CoinPackage.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true },
-    );
-    if (!coinPackage)
-      return res
-        .status(404)
-        .json({ success: false, message: "Coin package not found." });
-    res.json({ success: true, data: { coinPackage } });
-  } catch (error) {
-    respondError(res, error, "Unable to disable coin package.");
+    respondError(res, error, "Unable to load coin store products.");
   }
 };
 
+const createCoinStore = async (req, res) => {
+  try {
+    const coinStore = await CoinStore.create(coinStorePayload(req.body));
+    res.status(201).json({ success: true, data: { coinStore } });
+  } catch (error) {
+    respondError(res, error, "Unable to create coin store product.");
+  }
+};
+
+const updateCoinStore = async (req, res) => {
+  try {
+    const existing = await CoinStore.findById(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, message: "Coin store product not found." });
+    const coinStore = await CoinStore.findByIdAndUpdate(
+      req.params.id,
+      coinStorePayload({ ...existing.toObject(), ...req.body }),
+      { new: true, runValidators: true },
+    );
+    res.json({ success: true, data: { coinStore } });
+  } catch (error) {
+    respondError(res, error, "Unable to update coin store product.");
+  }
+};
+
+const deleteCoinStore = async (req, res) => {
+  try {
+    const coinStore = await CoinStore.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    if (!coinStore) return res.status(404).json({ success: false, message: "Coin store product not found." });
+    res.json({ success: true, data: { coinStore } });
+  } catch (error) {
+    respondError(res, error, "Unable to disable coin store product.");
+  }
+};
 const getSubscriptionPlans = async (req, res) => {
   try {
     const plans = await SubscriptionPlan.find(adminQuery(req))
@@ -135,10 +148,10 @@ const getMySubscription = async (req, res) => {
 };
 
 module.exports = {
-  getCoinPackages,
-  createCoinPackage,
-  updateCoinPackage,
-  deleteCoinPackage,
+  getCoinStore,
+  createCoinStore,
+  updateCoinStore,
+  deleteCoinStore,
   getSubscriptionPlans,
   createSubscriptionPlan,
   updateSubscriptionPlan,

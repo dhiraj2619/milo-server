@@ -13,9 +13,9 @@ const paymentOrderSchema = new mongoose.Schema(
       enum: ["coin_package", "subscription"],
       required: true,
     },
-    coinPackage: {
+    coinStore: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "CoinPackage",
+      ref: "CoinStore",
       default: null,
     },
     subscriptionPlan: {
