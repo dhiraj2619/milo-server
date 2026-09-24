@@ -1,6 +1,6 @@
 ﻿const User = require("../models/User.model");
 
-const fields = "nickname phoneNumber gender languages status isOnline createdAt avatarSeed avatarStyle photoUrl profileCompleted";
+const fields = "nickname phone gender languages status isOnline createdAt avatarSeed avatarStyle photoUrl profileCompleted";
 const adminListUsers = async (_req, res) => {
   try {
     const users = await User.find().select(fields).sort({ createdAt: -1 }).lean();
