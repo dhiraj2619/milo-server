@@ -1,6 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const {
+  adminLogin,
   sendFirebaseOTP,
   verifyFirebaseOTP,
   verifyFirebaseIdToken,
@@ -15,6 +16,7 @@ const otpRateLimit = rateLimit({
   message: {success: false, message: "Too many OTP requests. Try again later."},
 });
 
+router.post("/admin/login", otpRateLimit, adminLogin);
 router.post("/firebase/send", otpRateLimit, sendFirebaseOTP);
 router.post("/firebase/verify-code", otpRateLimit, verifyFirebaseOTP);
 router.post("/firebase/verify-token", verifyFirebaseIdToken);

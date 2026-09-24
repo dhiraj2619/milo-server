@@ -1,6 +1,18 @@
-﻿const User = require("../models/User.model");
+const User = require("../models/User.model");
+const jwt = require("jsonwebtoken");
 const {getFirebaseAuth} = require("../config/firebaseAdmin");
 
+const adminLogin = async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_AUTH_SECRET) {
+    return res.status(503).json({ success: false, message: "Admin authentication is not configured." });
+  }
+  if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ success: false, message: "Invalid email or password." });
+  }
+  const token = jwt.sign({ type: "admin", role: "admin", email }, process.env.ADMIN_AUTH_SECRET, { expiresIn: "12h" });
+  return res.status(200).json({ success: true, token });
+};
 const firebaseApiUrl = action => {
   const apiKey = process.env.FIREBASE_WEB_API_KEY;
   return apiKey ? `https://identitytoolkit.googleapis.com/v1/accounts:${action}?key=${apiKey}` : null;
@@ -126,7 +138,7 @@ const verifyFirebaseIdToken = async (req, res) => {
   }
 };
 
-module.exports = {sendFirebaseOTP, verifyFirebaseOTP, verifyFirebaseIdToken};
+module.exports = {adminLogin, sendFirebaseOTP, verifyFirebaseOTP, verifyFirebaseIdToken};
 
 
 
