@@ -20,7 +20,7 @@ const ALLOWED_LANGUAGES = [
 ];
 
 const PUBLIC_PROFILE_FIELDS =
-  "firebaseUid nickname phone gender languages avatarSeed avatarStyle photoUrl profileCompleted isOnline lastSeen referralCode coinBalance createdAt updatedAt";
+  "firebaseUid nickname phone gender languages avatarSeed avatarStyle photoUrl profileCompleted isOnline lastSeen referralCode coinBalance lastDailyCoinClaimAt createdAt updatedAt";
 const ADMIN_PROFILE_FIELDS =
   "nickname phone gender languages status isOnline createdAt avatarSeed avatarStyle photoUrl profileCompleted";
 
