@@ -19,6 +19,7 @@ const commerceRoutes = require("./routes/commerce.routes");
 const { Server } = require("socket.io");
 const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
+const { registerCallHandlers } = require("./sockets/call.socket");
 const app = express();
 
 const port = PORT;
@@ -76,6 +77,11 @@ io.on("connection", async (socket) => {
   }
 
   activeSocketsByUser.get(firebaseUid).add(socket.id);
+
+  // Registered before any await so early call events are not missed.
+  registerCallHandlers(io, socket, {
+    isUserOnline: uid => activeSocketsByUser.has(uid),
+  });
 
   await User.updateOne(
     { firebaseUid },
