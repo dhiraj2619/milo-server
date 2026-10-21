@@ -70,6 +70,8 @@ const userSchema = new mongoose.Schema(
       enum: ["user", "host", "admin"],
       default: "user",
     },
+    // Seeded bot profiles used for QA; hidden from discover unless SHOW_TEST_USERS=true.
+    isTestUser: {type: Boolean, default: false, index: true},
   },
   {
     timestamps: true,

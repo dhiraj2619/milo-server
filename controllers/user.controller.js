@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+﻿const crypto = require("crypto");
 const User = require("../models/User.model");
 const { getFirebaseAuth } = require("../config/firebaseAdmin");
 const { creditCoins } = require("../services/coin.service");
@@ -21,6 +21,9 @@ const ALLOWED_LANGUAGES = [
 
 const PUBLIC_PROFILE_FIELDS =
   "firebaseUid nickname phone gender languages avatarSeed avatarStyle photoUrl profileCompleted isOnline lastSeen referralCode coinBalance lastDailyCoinClaimAt createdAt updatedAt";
+// Fields other users may see; excludes phone, coins and referral details.
+const DISCOVER_PROFILE_FIELDS =
+  "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl isOnline lastSeen";
 const ADMIN_PROFILE_FIELDS =
   "nickname phone gender languages status isOnline createdAt avatarSeed avatarStyle photoUrl profileCompleted";
 
@@ -185,11 +188,13 @@ const getDiscoverProfiles = async (req, res) => {
     const language = typeof req.query.language === "string" ? req.query.language.trim() : "";
     const filter = { firebaseUid: { $ne: decoded.uid }, profileCompleted: true, status: "active" };
     if (language) filter.languages = language;
+    if (process.env.SHOW_TEST_USERS !== "true") filter.isTestUser = { $ne: true };
     const [users, total] = await Promise.all([
-      User.find(filter).select(PUBLIC_PROFILE_FIELDS).sort({ isOnline: -1, updatedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      User.find(filter).select(DISCOVER_PROFILE_FIELDS).sort({ isOnline: -1, updatedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       User.countDocuments(filter),
     ]);
-    return res.json({ success: true, data: { users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+    const pages = Math.ceil(total / limit);
+    return res.json({ success: true, data: { users, pagination: { page, limit, total, pages, hasNextPage: page < pages } } });
   } catch (error) {
     return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Unable to load profiles." });
   }
