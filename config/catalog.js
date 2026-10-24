@@ -55,3 +55,50 @@ function cleanPrompts(value) {
 }
 
 module.exports = {INTERESTS, MAX_INTERESTS, PROMPTS, MAX_PROMPTS, MAX_PROMPT_ANSWER, GIFTS, GIFTS_BY_ID, cleanInterests, cleanPrompts};
+
+// ---------- MILO Special ----------
+
+// Matching rooms. anyGender rooms ignore the usual opposite-gender preference.
+// maxSeconds ends the call automatically (Speed Talk).
+const ROOMS = [
+  {key: "night", anyGender: false, questions: ["What's keeping you up tonight?", "What's something you've never told anyone?", "What do you think about when you can't sleep?"]},
+  {key: "language", anyGender: true, questions: ["Teach me one phrase in your language.", "What's a word in your language that has no translation?", "Which language would you love to learn?"]},
+  {key: "music", anyGender: false, questions: ["What song are you playing on repeat?", "Which singer would you love to see live?", "What song reminds you of your childhood?"]},
+  {key: "friends", anyGender: true, questions: ["What did you do last weekend?", "What's your favourite place in your city?", "What's one thing that always makes you laugh?"]},
+  {key: "speed", anyGender: false, maxSeconds: 180, questions: ["Describe your perfect day in one sentence.", "What's the best thing that happened to you this week?", "Tea or coffee, and why?"]},
+];
+const ROOMS_BY_KEY = Object.fromEntries(ROOMS.map(room => [room.key, room]));
+
+// What's free and what MILO Connect unlocks (per day, Asia/Kolkata).
+const SPECIAL_LIMITS = {
+  freeMatches: 1,
+  subscriberMatches: 3,
+  extraMatchCoins: 20,
+  maxMatchesPerDay: 8,
+  freeSpeedRounds: 3,
+};
+
+// One question per day for everyone; the day number picks it.
+const DAILY_QUESTIONS = [
+  "What's the best street food in your city?",
+  "Which movie can you watch again and again?",
+  "What's one thing on your bucket list?",
+  "What was your favourite subject in school?",
+  "Mountains or beaches, and why?",
+  "What's a small thing that makes your day better?",
+  "Which festival do you love the most?",
+  "What's the last song you sang out loud?",
+  "If you could live in any city, which one?",
+  "What's your comfort food after a long day?",
+  "What's a skill you'd love to learn this year?",
+  "Who was your childhood hero?",
+  "What's the best advice you've ever got?",
+  "Morning person or night owl?",
+];
+const MAX_DAILY_ANSWER = 120;
+
+module.exports.ROOMS = ROOMS;
+module.exports.ROOMS_BY_KEY = ROOMS_BY_KEY;
+module.exports.SPECIAL_LIMITS = SPECIAL_LIMITS;
+module.exports.DAILY_QUESTIONS = DAILY_QUESTIONS;
+module.exports.MAX_DAILY_ANSWER = MAX_DAILY_ANSWER;

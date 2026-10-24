@@ -17,10 +17,12 @@ const coinRoutes = require("./routes/coin.routes");
 const chatRoutes = require("./routes/chat.routes");
 const commerceRoutes = require("./routes/commerce.routes");
 const adminRoutes = require("./routes/admin.routes");
+const specialRoutes = require("./routes/special.routes");
 const { Server } = require("socket.io");
 const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
 const { registerCallHandlers } = require("./sockets/call.socket");
+const { registerMatchHandlers } = require("./sockets/match.socket");
 const app = express();
 
 const port = PORT;
@@ -56,6 +58,7 @@ app.use("/api/coins", coinRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/commerce", commerceRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/special", specialRoutes);
 
 io.use(async (socket, next) => {
   try {
@@ -93,6 +96,7 @@ io.on("connection", async (socket) => {
     isUserOnline: uid => activeSocketsByUser.has(uid),
     isUserInApp: uid => [...(activeSocketsByUser.get(uid) || [])].some(id => io.sockets.sockets.get(id)?.data.inApp),
   });
+  registerMatchHandlers(io, socket);
 
   await User.updateOne(
     { firebaseUid },

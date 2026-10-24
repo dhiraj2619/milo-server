@@ -31,6 +31,7 @@ const coinTransactionSchema = new mongoose.Schema(
         'admin_adjustment',
         'refund',
         'gift_sent',
+        'match_refresh',
       ],
       required: true,
     },

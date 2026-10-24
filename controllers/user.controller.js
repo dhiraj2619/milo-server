@@ -275,7 +275,10 @@ const addFavourite = async (req, res) => {
     // Moves an existing favourite to the newest position.
     await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { favourites: target._id } });
     await User.updateOne({ firebaseUid: decoded.uid }, { $push: { favourites: { $each: [target._id], $slice: -MAX_FAVOURITES } } });
-    return res.json({ success: true, data: { userId: String(target._id), favourite: true } });
+    // Mutual when they had already favourited this user ("It's a match" after Speed Talk).
+    const me = await User.findOne({ firebaseUid: decoded.uid }).select("_id").lean();
+    const mutual = Boolean(me && await User.exists({ _id: target._id, favourites: me._id }));
+    return res.json({ success: true, data: { userId: String(target._id), favourite: true, mutual } });
   } catch (error) {
     return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
   }

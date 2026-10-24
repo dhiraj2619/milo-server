@@ -17,6 +17,8 @@ const callSchema = new mongoose.Schema(
     answeredAt: {type: Date, default: null},
     endedAt: {type: Date, required: true},
     durationSeconds: {type: Number, default: 0, min: 0},
+    // Where the call started: null for a direct call, or a MILO Special room key such as "speed".
+    source: {type: String, default: null},
   },
   {timestamps: true},
 );

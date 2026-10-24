@@ -16,6 +16,8 @@ const {GIFTS_BY_ID} = require("../config/catalog");
 // Running several instances needs a shared store such as the Redis adapter.
 
 const RING_TIMEOUT_MS = 30000;
+// A matched call (MILO Special rooms) that both phones don't join in time is dropped.
+const MATCH_CONNECT_TIMEOUT_MS = 20000;
 const CALL_TYPES = ["audio", "video"];
 const PEER_FIELDS = "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl interests prompts giftsReceived";
 
@@ -180,7 +182,22 @@ function registerCallHandlers(io, socket, {isUserOnline, isUserInApp}) {
     const call = findOwnCall(callId);
     if (!call) return;
     if (call.status === "ringing") finishCall(io, callId, call.callerUid === uid ? "cancelled" : "rejected");
+    else if (call.status === "matched") finishCall(io, callId, "cancelled");
     else finishCall(io, callId, "ended");
+  });
+
+  // Matched calls: each phone says when its microphone is ready. Once both are,
+  // the "offer" side is told to start WebRTC (the same event a normal accept sends).
+  socket.on("call:ready", ({callId} = {}) => {
+    const call = findOwnCall(callId);
+    if (!call || call.status !== "matched") return;
+    call.ready.add(uid);
+    if (call.ready.size < 2) return;
+    clearTimeout(call.ringTimer);
+    call.status = "active";
+    call.answeredAt = new Date();
+    if (call.maxSeconds) call.limitTimer = setTimeout(() => finishCall(io, call.id, "time_up"), call.maxSeconds * 1000);
+    io.to(call.callerSocketId).emit("call:accepted", {callId});
   });
 
   // Relays WebRTC offer/answer, ICE candidates and mute/camera state to the other party.
@@ -196,10 +213,8 @@ function registerCallHandlers(io, socket, {isUserOnline, isUserInApp}) {
     const call = callId && calls.get(callId);
     if (!call) return;
     // Only the device that is actually in the call ends it.
-    if (socket.id === call.callerSocketId) {
-      finishCall(io, callId, call.status === "ringing" ? "cancelled" : "disconnected");
-    } else if (socket.id === call.calleeSocketId) {
-      finishCall(io, callId, "disconnected");
+    if (socket.id === call.callerSocketId || socket.id === call.calleeSocketId) {
+      finishCall(io, callId, call.status === "active" ? "disconnected" : "cancelled");
     }
   });
 }
@@ -210,6 +225,7 @@ const STATUS_BY_REASON = {
   no_answer: "missed",
   rejected: "rejected",
   cancelled: "cancelled",
+  time_up: "completed",
   offline: "missed",
 };
 // Outcomes the callee should hear about later.
@@ -219,6 +235,7 @@ function finishCall(io, callId, reason) {
   const call = calls.get(callId);
   if (!call) return;
   clearTimeout(call.ringTimer);
+  clearTimeout(call.limitTimer);
   calls.delete(callId);
   if (callIdByUser.get(call.callerUid) === callId) callIdByUser.delete(call.callerUid);
   if (callIdByUser.get(call.calleeUid) === callId) callIdByUser.delete(call.calleeUid);
@@ -228,7 +245,8 @@ function finishCall(io, callId, reason) {
   const endedAt = new Date();
   const answered = Boolean(call.answeredAt);
   // Same tag as the incoming-call push, so it replaces it on the callee's phone.
-  if (!answered && MISSED_REASONS.includes(reason)) {
+  // Room matches are not "missed calls"; nobody called anyone.
+  if (!answered && !call.source && MISSED_REASONS.includes(reason)) {
     sendToUser(call.callee._id, {
       title: "Missed call",
       body: `${call.caller.nickname || "Someone"} tried to ${callTypeLabel(call)} call you`,
@@ -248,6 +266,7 @@ function finishCall(io, callId, reason) {
     answeredAt: call.answeredAt,
     endedAt,
     durationSeconds: answered ? Math.round((endedAt - call.answeredAt) / 1000) : 0,
+    source: call.source || null,
   }).catch(error => console.error("Unable to save call log:", error.message));
 }
 
@@ -267,3 +286,44 @@ function getLiveCalls() {
 }
 
 module.exports.getLiveCalls = getLiveCalls;
+
+const isInCall = uid => callIdByUser.has(uid);
+
+// Starts a call between two people the room queue paired up (see sockets/match.socket.js).
+// No ringing: both phones get "call:matched", prepare their microphones and send "call:ready".
+// `first` and `second` are {user, socketId}; `user` is loaded with PEER_FIELDS.
+function createMatchedCall(io, {first, second, room}) {
+  const call = {
+    id: crypto.randomUUID(),
+    callType: "audio",
+    caller: first.user,
+    callee: second.user,
+    callerUid: first.user.firebaseUid,
+    calleeUid: second.user.firebaseUid,
+    callerSocketId: first.socketId,
+    calleeSocketId: second.socketId,
+    status: "matched",
+    startedAt: new Date(),
+    answeredAt: null,
+    ringTimer: null,
+    limitTimer: null,
+    source: room.key,
+    maxSeconds: room.maxSeconds || null,
+    ready: new Set(),
+  };
+  call.ringTimer = setTimeout(() => finishCall(io, call.id, "failed"), MATCH_CONNECT_TIMEOUT_MS);
+  calls.set(call.id, call);
+  callIdByUser.set(call.callerUid, call.id);
+  callIdByUser.set(call.calleeUid, call.id);
+
+  const servers = iceServers();
+  const question = room.questions[Math.floor(Math.random() * room.questions.length)];
+  const shared = {callId: call.id, callType: call.callType, room: room.key, question, maxSeconds: call.maxSeconds, iceServers: servers};
+  io.to(call.callerSocketId).emit("call:matched", {...shared, role: "offer", peer: publicPeer(call.callee)});
+  io.to(call.calleeSocketId).emit("call:matched", {...shared, role: "answer", peer: publicPeer(call.caller)});
+  return call;
+}
+
+module.exports.isInCall = isInCall;
+module.exports.createMatchedCall = createMatchedCall;
+module.exports.PEER_FIELDS = PEER_FIELDS;

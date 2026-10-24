@@ -88,6 +88,9 @@ const userSchema = new mongoose.Schema(
   },
 );
 
+// Finds who favourited a user ("Who favourited you").
+userSchema.index({favourites: 1});
+
 module.exports = mongoose.model("User", userSchema);
 
 

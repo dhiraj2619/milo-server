@@ -236,6 +236,7 @@ const TRANSACTION_LABELS = {
   admin_adjustment: "Admin coin adjustment",
   refund: "Refund",
   gift_sent: "Gift sent",
+  match_refresh: "Extra Today's Match",
 };
 
 // Each source returns its newest items created before `before`, already shaped for the feed.
