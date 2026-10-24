@@ -56,6 +56,14 @@ const userSchema = new mongoose.Schema(
     },
     // FCM registration tokens, one per signed-in device. Used to reach users whose app is closed.
     pushTokens: {type: [String], default: [], select: false},
+    // Shown on profile cards and the call screen to break the ice (values from config/catalog.js).
+    interests: {type: [String], default: []},
+    prompts: {type: [{_id: false, question: String, answer: {type: String, maxlength: 80}}], default: []},
+    // Gifts collected in calls: total plus a count per gift id, e.g. {rose: 3}.
+    giftsReceived: {type: Number, default: 0, min: 0},
+    giftCounts: {type: mongoose.Schema.Types.Mixed, default: {}},
+    // People this user saved after a call, newest last.
+    favourites: {type: [{type: mongoose.Schema.Types.ObjectId, ref: "User"}], default: [], select: false},
 
     isVerified: {
       type: Boolean,

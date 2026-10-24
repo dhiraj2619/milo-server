@@ -1,7 +1,10 @@
 ﻿const crypto = require("crypto");
+const mongoose = require("mongoose");
 const User = require("../models/User.model");
 const { getFirebaseAuth } = require("../config/firebaseAdmin");
 const { creditCoins } = require("../services/coin.service");
+const { uploadProfilePhoto, deleteProfilePhoto } = require("../services/photo.service");
+const { INTERESTS, MAX_INTERESTS, PROMPTS, MAX_PROMPTS, MAX_PROMPT_ANSWER, GIFTS, cleanInterests, cleanPrompts } = require("../config/catalog");
 
 const ALLOWED_LANGUAGES = [
   "Hindi",
@@ -20,10 +23,10 @@ const ALLOWED_LANGUAGES = [
 ];
 
 const PUBLIC_PROFILE_FIELDS =
-  "firebaseUid nickname phone gender languages avatarSeed avatarStyle photoUrl profileCompleted isOnline lastSeen referralCode coinBalance lastDailyCoinClaimAt createdAt updatedAt";
+  "firebaseUid nickname phone gender languages avatarSeed avatarStyle photoUrl profileCompleted isOnline lastSeen referralCode coinBalance lastDailyCoinClaimAt interests prompts giftsReceived giftCounts createdAt updatedAt";
 // Fields other users may see; excludes phone, coins and referral details.
 const DISCOVER_PROFILE_FIELDS =
-  "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl isOnline lastSeen";
+  "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl isOnline lastSeen interests prompts giftsReceived";
 const ADMIN_PROFILE_FIELDS =
   "nickname phone gender languages status isOnline createdAt avatarSeed avatarStyle photoUrl profileCompleted";
 
@@ -70,7 +73,7 @@ const validateProfile = ({ nickname, gender, languages }) => {
 
 const saveUserProfile = async (req, res) => {
   try {
-    const { idToken, nickname, gender, languages, avatarSeed, avatarStyle, referralCode } = req.body || {};
+    const { idToken, nickname, gender, languages, avatarSeed, avatarStyle, referralCode, interests, prompts } = req.body || {};
     if (!idToken) return res.status(400).json({ success: false, message: "idToken is required." });
 
     const decoded = await getFirebaseAuth().verifyIdToken(idToken, true);
@@ -81,6 +84,11 @@ const saveUserProfile = async (req, res) => {
 
     const validationError = validateProfile({ nickname, gender, languages });
     if (validationError) return res.status(400).json({ success: false, message: validationError });
+    // Optional at signup; older app versions don't send them.
+    const cleanedInterests = interests === undefined ? undefined : cleanInterests(interests);
+    const cleanedPrompts = prompts === undefined ? undefined : cleanPrompts(prompts);
+    if (cleanedInterests === null) return res.status(400).json({ success: false, message: `Pick up to ${MAX_INTERESTS} interests from the list.` });
+    if (cleanedPrompts === null) return res.status(400).json({ success: false, message: `Answer up to ${MAX_PROMPTS} different prompts, ${MAX_PROMPT_ANSWER} characters each.` });
 
     const existingUser = await User.findOne({ firebaseUid: decoded.uid });
     let referrer = null;
@@ -106,6 +114,8 @@ const saveUserProfile = async (req, res) => {
           languages: [...new Set(languages)],
           avatarSeed: typeof avatarSeed === "string" ? avatarSeed : `milo-${gender}-photo`,
           avatarStyle: avatarStyle || null,
+          ...(cleanedInterests ? { interests: cleanedInterests } : {}),
+          ...(cleanedPrompts ? { prompts: cleanedPrompts } : {}),
           profileCompleted: true,
           referralCode: referral,
           status: "active",
@@ -172,6 +182,14 @@ const updateMyProfile = async (req, res) => {
     const updates = {};
     if (typeof req.body?.avatarSeed === "string") updates.avatarSeed = req.body.avatarSeed;
     if (req.body?.avatarStyle && typeof req.body.avatarStyle === "object") updates.avatarStyle = req.body.avatarStyle;
+    if (req.body?.interests !== undefined) {
+      updates.interests = cleanInterests(req.body.interests);
+      if (!updates.interests) return res.status(400).json({ success: false, message: `Pick up to ${MAX_INTERESTS} interests from the list.` });
+    }
+    if (req.body?.prompts !== undefined) {
+      updates.prompts = cleanPrompts(req.body.prompts);
+      if (!updates.prompts) return res.status(400).json({ success: false, message: `Answer up to ${MAX_PROMPTS} different prompts, ${MAX_PROMPT_ANSWER} characters each.` });
+    }
     const user = await User.findOneAndUpdate({ firebaseUid: decoded.uid }, { $set: updates }, { new: true, runValidators: true }).select(PUBLIC_PROFILE_FIELDS).lean();
     if (!user) return res.status(404).json({ success: false, message: "Profile not found." });
     return res.json({ success: true, data: { user } });
@@ -197,6 +215,80 @@ const getDiscoverProfiles = async (req, res) => {
     return res.json({ success: true, data: { users, pagination: { page, limit, total, pages, hasNextPage: page < pages } } });
   } catch (error) {
     return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Unable to load profiles." });
+  }
+};
+
+// The photo arrives as multipart field "photo" (see receivePhoto in the route).
+const uploadMyPhoto = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    if (!req.file?.buffer?.length) return res.status(400).json({ success: false, message: "Please choose a photo." });
+    if (!(await User.exists({ firebaseUid: decoded.uid }))) return res.status(404).json({ success: false, message: "Profile not found." });
+    const photoUrl = await uploadProfilePhoto(req.file.buffer, decoded.uid);
+    const user = await User.findOneAndUpdate({ firebaseUid: decoded.uid }, { $set: { photoUrl } }, { new: true }).select(PUBLIC_PROFILE_FIELDS).lean();
+    return res.json({ success: true, data: { user } });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
+    console.error("Profile photo upload failed:", error.message);
+    return res.status(502).json({ success: false, message: "Could not upload your photo. Please try again." });
+  }
+};
+
+// Goes back to showing the avatar.
+const removeMyPhoto = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const user = await User.findOneAndUpdate({ firebaseUid: decoded.uid }, { $set: { photoUrl: null } }, { new: true }).select(PUBLIC_PROFILE_FIELDS).lean();
+    if (!user) return res.status(404).json({ success: false, message: "Profile not found." });
+    deleteProfilePhoto(decoded.uid);
+    return res.json({ success: true, data: { user } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
+const MAX_FAVOURITES = 200;
+
+// Favourites with live online status, online people first.
+const getMyFavourites = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const me = await User.findOne({ firebaseUid: decoded.uid }).select("+favourites").lean();
+    if (!me) return res.status(404).json({ success: false, message: "Profile not found." });
+    const people = await User.find({ _id: { $in: me.favourites || [] }, status: "active" }).select(DISCOVER_PROFILE_FIELDS).lean();
+    // Newest favourite first, then online before offline (stable sort keeps the recency order).
+    const order = new Map((me.favourites || []).map((id, index) => [String(id), index]));
+    people.sort((a, b) => order.get(String(b._id)) - order.get(String(a._id)));
+    people.sort((a, b) => Number(Boolean(b.isOnline)) - Number(Boolean(a.isOnline)));
+    return res.json({ success: true, data: { favourites: people } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
+const addFavourite = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const target = await User.findOne({ _id: req.params.userId, status: "active" }).select("_id firebaseUid").lean().catch(() => null);
+    if (!target) return res.status(404).json({ success: false, message: "That person is not available." });
+    if (target.firebaseUid === decoded.uid) return res.status(400).json({ success: false, message: "You can't add yourself." });
+    // Moves an existing favourite to the newest position.
+    await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { favourites: target._id } });
+    await User.updateOne({ firebaseUid: decoded.uid }, { $push: { favourites: { $each: [target._id], $slice: -MAX_FAVOURITES } } });
+    return res.json({ success: true, data: { userId: String(target._id), favourite: true } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
+const removeFavourite = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ success: false, message: "Not in your favourites." });
+    await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { favourites: req.params.userId } });
+    return res.json({ success: true, data: { userId: req.params.userId, favourite: false } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
   }
 };
 
@@ -237,6 +329,12 @@ const removePushToken = async (req, res) => {
 
 const getLanguages = (_req, res) => res.json({ success: true, data: { languages: ALLOWED_LANGUAGES } });
 
+// Everything the app offers on profiles and in calls. Public: needed before and during signup.
+const getProfileOptions = (_req, res) => res.json({
+  success: true,
+  data: { languages: ALLOWED_LANGUAGES, interests: INTERESTS, maxInterests: MAX_INTERESTS, prompts: PROMPTS, maxPrompts: MAX_PROMPTS, maxPromptAnswer: MAX_PROMPT_ANSWER, gifts: GIFTS },
+});
+
 const adminListUsers = async (_req, res) => {
   try {
     const users = await User.find().select(ADMIN_PROFILE_FIELDS).sort({ createdAt: -1 }).lean();
@@ -272,8 +370,14 @@ module.exports = {
   updateMyProfile,
   getDiscoverProfiles,
   getLanguages,
+  getProfileOptions,
   registerPushToken,
   removePushToken,
+  uploadMyPhoto,
+  removeMyPhoto,
+  getMyFavourites,
+  addFavourite,
+  removeFavourite,
   adminListUsers,
   adminBlockUser,
   adminDeleteUser,

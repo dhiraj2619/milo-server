@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const User = require("../models/User.model");
 const Call = require("../models/Call.model");
 const {sendToUser} = require("../services/push.service");
+const {sendGift} = require("../services/gift.service");
+const {GIFTS_BY_ID} = require("../config/catalog");
 
 // Socket.IO only carries call signaling (invite/accept/end and WebRTC
 // offer/answer/ICE). Audio and video flow peer-to-peer over WebRTC.
@@ -15,7 +17,7 @@ const {sendToUser} = require("../services/push.service");
 
 const RING_TIMEOUT_MS = 30000;
 const CALL_TYPES = ["audio", "video"];
-const PEER_FIELDS = "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl";
+const PEER_FIELDS = "firebaseUid nickname gender languages avatarSeed avatarStyle photoUrl interests prompts giftsReceived";
 
 const calls = new Map(); // callId -> call
 const callIdByUser = new Map(); // firebaseUid -> callId
@@ -43,6 +45,10 @@ const publicPeer = user => ({
   avatarSeed: user.avatarSeed,
   avatarStyle: user.avatarStyle,
   photoUrl: user.photoUrl,
+  // Conversation starters for the call screen.
+  interests: user.interests || [],
+  prompts: user.prompts || [],
+  giftsReceived: user.giftsReceived || 0,
 });
 
 const incomingPayload = call => ({
@@ -140,6 +146,29 @@ function registerCallHandlers(io, socket, {isUserOnline, isUserInApp}) {
     // Stop the ringer on the callee's other devices.
     socket.to(call.calleeUid).emit("call:ended", {callId, reason: "answered_elsewhere"});
     return ack({ok: true});
+  });
+
+  // A gift during a connected call. The server charges the sender, then both phones show the animation.
+  socket.on("call:gift", async ({callId, giftId, requestId} = {}, ack = () => {}) => {
+    const call = findOwnCall(callId);
+    if (!call || call.status !== "active") return ack({ok: false, reason: "not_in_call"});
+    const gift = GIFTS_BY_ID[giftId];
+    if (!gift || typeof requestId !== "string" || !requestId || requestId.length > 64) return ack({ok: false, reason: "invalid"});
+    const fromCaller = call.callerUid === uid;
+    const sender = fromCaller ? call.caller : call.callee;
+    const receiver = fromCaller ? call.callee : call.caller;
+    try {
+      const {coinBalance, duplicate} = await sendGift({sender, receiver, gift, requestId, callId});
+      if (!duplicate) {
+        const event = {callId, giftId: gift.id, fromUserId: String(sender._id), fromName: sender.nickname};
+        io.to(call.callerSocketId).to(call.calleeSocketId).emit("call:gift", event);
+      }
+      return ack({ok: true, coinBalance});
+    } catch (error) {
+      if (error.status === 409) return ack({ok: false, reason: "insufficient_coins", price: gift.coins});
+      console.error("call:gift error:", error.message);
+      return ack({ok: false, reason: "error"});
+    }
   });
 
   socket.on("call:reject", ({callId} = {}) => {

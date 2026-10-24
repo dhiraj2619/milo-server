@@ -235,6 +235,7 @@ const TRANSACTION_LABELS = {
   subscription_purchase: "Subscription purchase",
   admin_adjustment: "Admin coin adjustment",
   refund: "Refund",
+  gift_sent: "Gift sent",
 };
 
 // Each source returns its newest items created before `before`, already shaped for the feed.

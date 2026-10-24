@@ -30,6 +30,7 @@ const coinTransactionSchema = new mongoose.Schema(
         'subscription_purchase',
         'admin_adjustment',
         'refund',
+        'gift_sent',
       ],
       required: true,
     },

@@ -1,14 +1,21 @@
 const router = require("express").Router();
 const { requireEnvironmentAdmin } = require("../middlewares/adminAuth.middleware");
 const { auditAdmin } = require("../middlewares/adminAudit.middleware");
+const { receivePhoto } = require("../services/photo.service");
 const {
   saveUserProfile,
   getMyProfile,
   updateMyProfile,
   getDiscoverProfiles,
   getLanguages,
+  getProfileOptions,
   registerPushToken,
   removePushToken,
+  uploadMyPhoto,
+  removeMyPhoto,
+  getMyFavourites,
+  addFavourite,
+  removeFavourite,
   adminListUsers,
   adminBlockUser,
   adminDeleteUser,
@@ -19,8 +26,14 @@ router.get("/me", getMyProfile);
 router.patch("/me", updateMyProfile);
 router.get("/discover", getDiscoverProfiles);
 router.get("/languages", getLanguages);
+router.get("/options", getProfileOptions);
 router.put("/me/push-token", registerPushToken);
 router.delete("/me/push-token", removePushToken);
+router.post("/me/photo", receivePhoto, uploadMyPhoto);
+router.delete("/me/photo", removeMyPhoto);
+router.get("/me/favourites", getMyFavourites);
+router.put("/me/favourites/:userId", addFavourite);
+router.delete("/me/favourites/:userId", removeFavourite);
 
 router.get("/admin", requireEnvironmentAdmin, adminListUsers);
 router.patch("/admin/:id/block", requireEnvironmentAdmin, auditAdmin("suspend", "user", () => "User suspended"), adminBlockUser);
