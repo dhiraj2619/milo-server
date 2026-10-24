@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const { requireEnvironmentAdmin } = require("../middlewares/adminAuth.middleware");
+const { auditAdmin } = require("../middlewares/adminAudit.middleware");
 const {
   saveUserProfile,
   getMyProfile,
@@ -22,7 +23,7 @@ router.put("/me/push-token", registerPushToken);
 router.delete("/me/push-token", removePushToken);
 
 router.get("/admin", requireEnvironmentAdmin, adminListUsers);
-router.patch("/admin/:id/block", requireEnvironmentAdmin, adminBlockUser);
-router.delete("/admin/:id", requireEnvironmentAdmin, adminDeleteUser);
+router.patch("/admin/:id/block", requireEnvironmentAdmin, auditAdmin("suspend", "user", () => "User suspended"), adminBlockUser);
+router.delete("/admin/:id", requireEnvironmentAdmin, auditAdmin("ban", "user", () => "User banned"), adminDeleteUser);
 
 module.exports = router;

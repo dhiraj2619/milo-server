@@ -16,6 +16,7 @@ const userRoutes = require("./routes/user.routes");
 const coinRoutes = require("./routes/coin.routes");
 const chatRoutes = require("./routes/chat.routes");
 const commerceRoutes = require("./routes/commerce.routes");
+const adminRoutes = require("./routes/admin.routes");
 const { Server } = require("socket.io");
 const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
@@ -35,6 +36,8 @@ const io = new Server(server, {
 const activeSocketsByUser = new Map();
 
 app.set('io', io);
+// Live "online now" count for the admin dashboard.
+app.set('onlineUserCount', () => activeSocketsByUser.size);
 connectToDB();
 
 cloudinary.config({
@@ -52,6 +55,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/coins", coinRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/commerce", commerceRoutes);
+app.use("/api/admin", adminRoutes);
 
 io.use(async (socket, next) => {
   try {

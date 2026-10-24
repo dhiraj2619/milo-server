@@ -223,3 +223,18 @@ function finishCall(io, callId, reason) {
 }
 
 module.exports = {registerCallHandlers};
+
+// Calls ringing or in progress right now, for the admin dashboard.
+function getLiveCalls() {
+  return [...calls.values()].map(call => ({
+    callId: call.id,
+    callType: call.callType,
+    status: call.status,
+    caller: publicPeer(call.caller),
+    callee: publicPeer(call.callee),
+    startedAt: call.startedAt,
+    answeredAt: call.answeredAt,
+  }));
+}
+
+module.exports.getLiveCalls = getLiveCalls;
