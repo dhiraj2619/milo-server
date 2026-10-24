@@ -6,6 +6,7 @@ const { creditCoins } = require("../services/coin.service");
 const { uploadProfilePhoto, deleteProfilePhoto } = require("../services/photo.service");
 const { queueLikeNotification } = require("../services/notify.service");
 const ProfileView = require("../models/ProfileView.model");
+const Call = require("../models/Call.model");
 const { INTERESTS, MAX_INTERESTS, PROMPTS, MAX_PROMPTS, MAX_PROMPT_ANSWER, GIFTS, cleanInterests, cleanPrompts } = require("../config/catalog");
 
 const ALLOWED_LANGUAGES = [
@@ -252,6 +253,46 @@ const removeMyPhoto = async (req, res) => {
 const MAX_FAVOURITES = 200;
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
+// How a call ended, from this user's side ("incoming"/"outgoing" + the stored status).
+const callOutcome = (direction, status) => {
+  if (status === "completed") return "answered";
+  if (status === "failed") return "failed";
+  if (direction === "incoming") return status === "rejected" ? "declined_by_you" : "missed";
+  return { missed: "no_answer", rejected: "declined", cancelled: "cancelled" }[status] || "no_answer";
+};
+
+// The signed-in user's call history, newest first, for "Recent" with one-tap call back.
+// ?before=<ISO date> loads the next page.
+const getMyCalls = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const me = await User.findOne({ firebaseUid: decoded.uid }).select("_id").lean();
+    if (!me) return res.status(404).json({ success: false, message: "Profile not found." });
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 30, 1), 50);
+    const filter = { $or: [{ caller: me._id }, { callee: me._id }] };
+    if (req.query.before && !Number.isNaN(Date.parse(req.query.before))) filter.startedAt = { $lt: new Date(req.query.before) };
+    const calls = await Call.find(filter).sort({ startedAt: -1 }).limit(limit)
+      .populate("caller callee", DISCOVER_PROFILE_FIELDS).lean();
+    const items = calls.map(call => {
+      const direction = String(call.caller?._id) === String(me._id) ? "outgoing" : "incoming";
+      return {
+        _id: call._id,
+        callType: call.callType,
+        direction,
+        outcome: callOutcome(direction, call.status),
+        durationSeconds: call.durationSeconds || 0,
+        startedAt: call.startedAt,
+        source: call.source || null,
+        // The other person; null if their account is gone.
+        person: direction === "outgoing" ? call.callee : call.caller,
+      };
+    });
+    return res.json({ success: true, data: { calls: items, nextBefore: calls.length === limit ? calls.at(-1).startedAt : null } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
 // Another user's public profile. Opening it counts as a profile view (once per viewer per day).
 const getPublicProfile = async (req, res) => {
   try {
@@ -412,6 +453,7 @@ module.exports = {
   removeMyPhoto,
   getMyFavourites,
   getPublicProfile,
+  getMyCalls,
   addFavourite,
   removeFavourite,
   adminListUsers,

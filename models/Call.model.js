@@ -23,4 +23,8 @@ const callSchema = new mongoose.Schema(
   {timestamps: true},
 );
 
+// Call history per user ("Recent"), newest first.
+callSchema.index({caller: 1, startedAt: -1});
+callSchema.index({callee: 1, startedAt: -1});
+
 module.exports = mongoose.model("Call", callSchema);
