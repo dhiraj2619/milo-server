@@ -14,6 +14,7 @@ const {
   uploadMyPhoto,
   removeMyPhoto,
   getMyFavourites,
+  getPublicProfile,
   addFavourite,
   removeFavourite,
   adminListUsers,
@@ -32,6 +33,8 @@ router.delete("/me/push-token", removePushToken);
 router.post("/me/photo", receivePhoto, uploadMyPhoto);
 router.delete("/me/photo", removeMyPhoto);
 router.get("/me/favourites", getMyFavourites);
+// After every /me route, so "me" is never read as a user id.
+router.get("/:userId/profile", getPublicProfile);
 router.put("/me/favourites/:userId", addFavourite);
 router.delete("/me/favourites/:userId", removeFavourite);
 

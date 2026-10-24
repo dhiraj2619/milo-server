@@ -4,6 +4,8 @@ const User = require("../models/User.model");
 const { getFirebaseAuth } = require("../config/firebaseAdmin");
 const { creditCoins } = require("../services/coin.service");
 const { uploadProfilePhoto, deleteProfilePhoto } = require("../services/photo.service");
+const { queueLikeNotification } = require("../services/notify.service");
+const ProfileView = require("../models/ProfileView.model");
 const { INTERESTS, MAX_INTERESTS, PROMPTS, MAX_PROMPTS, MAX_PROMPT_ANSWER, GIFTS, cleanInterests, cleanPrompts } = require("../config/catalog");
 
 const ALLOWED_LANGUAGES = [
@@ -248,6 +250,32 @@ const removeMyPhoto = async (req, res) => {
 };
 
 const MAX_FAVOURITES = 200;
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+
+// Another user's public profile. Opening it counts as a profile view (once per viewer per day).
+const getPublicProfile = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    if (!mongoose.isValidObjectId(req.params.userId)) return res.status(404).json({ success: false, message: "Profile not found." });
+    const [me, user] = await Promise.all([
+      User.findOne({ firebaseUid: decoded.uid }).select("_id +favourites").lean(),
+      User.findOne({ _id: req.params.userId, status: "active", profileCompleted: true }).select(`${DISCOVER_PROFILE_FIELDS} giftCounts`).lean(),
+    ]);
+    if (!me || !user) return res.status(404).json({ success: false, message: "Profile not found." });
+    const isSelf = String(me._id) === String(user._id);
+    if (!isSelf) {
+      ProfileView.updateOne(
+        { viewer: me._id, viewed: user._id, day: today() },
+        { $set: { viewer: me._id, viewed: user._id, day: today() } },
+        { upsert: true },
+      ).catch(error => { if (error.code !== 11000) console.error("Unable to record profile view:", error.message); });
+    }
+    const isFavourite = (me.favourites || []).some(id => String(id) === String(user._id));
+    return res.json({ success: true, data: { user, isFavourite, isSelf } });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
 
 // Favourites with live online status, online people first.
 const getMyFavourites = async (req, res) => {
@@ -272,12 +300,16 @@ const addFavourite = async (req, res) => {
     const target = await User.findOne({ _id: req.params.userId, status: "active" }).select("_id firebaseUid").lean().catch(() => null);
     if (!target) return res.status(404).json({ success: false, message: "That person is not available." });
     if (target.firebaseUid === decoded.uid) return res.status(400).json({ success: false, message: "You can't add yourself." });
+    const me = await User.findOne({ firebaseUid: decoded.uid }).select("_id +favourites").lean();
+    if (!me) return res.status(404).json({ success: false, message: "Profile not found." });
+    const isNewLike = !(me.favourites || []).some(id => String(id) === String(target._id));
     // Moves an existing favourite to the newest position.
-    await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { favourites: target._id } });
-    await User.updateOne({ firebaseUid: decoded.uid }, { $push: { favourites: { $each: [target._id], $slice: -MAX_FAVOURITES } } });
+    await User.updateOne({ _id: me._id }, { $pull: { favourites: target._id } });
+    await User.updateOne({ _id: me._id }, { $push: { favourites: { $each: [target._id], $slice: -MAX_FAVOURITES } } });
+    // A real, new like: tell them later ("Riya liked your profile"), unless they're active by then.
+    if (isNewLike) queueLikeNotification(target._id, me._id);
     // Mutual when they had already favourited this user ("It's a match" after Speed Talk).
-    const me = await User.findOne({ firebaseUid: decoded.uid }).select("_id").lean();
-    const mutual = Boolean(me && await User.exists({ _id: target._id, favourites: me._id }));
+    const mutual = Boolean(await User.exists({ _id: target._id, favourites: me._id }));
     return res.json({ success: true, data: { userId: String(target._id), favourite: true, mutual } });
   } catch (error) {
     return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
@@ -379,6 +411,7 @@ module.exports = {
   uploadMyPhoto,
   removeMyPhoto,
   getMyFavourites,
+  getPublicProfile,
   addFavourite,
   removeFavourite,
   adminListUsers,

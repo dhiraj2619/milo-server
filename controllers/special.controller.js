@@ -1,5 +1,6 @@
 const User = require("../models/User.model");
 const Gift = require("../models/Gift.model");
+const ProfileView = require("../models/ProfileView.model");
 const DailyAnswer = require("../models/DailyAnswer.model");
 const DailyActivity = require("../models/DailyActivity.model");
 const {DAILY_QUESTIONS, MAX_DAILY_ANSWER, ROOMS, SPECIAL_LIMITS} = require("../config/catalog");
@@ -12,6 +13,7 @@ const {roomCounts} = require("../sockets/match.socket");
 // Every route uses requireAuth, so req.auth.user is the signed-in user.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const VIEWS_WINDOW_DAYS = 30;
 const fail = (res, error, message) => res.status(error.status || 500).json({success: false, message: error.status ? error.message : message});
 
 // Same question for everyone today: days since 1970 (in IST) pick from the list.
@@ -41,6 +43,26 @@ async function matchState(me, activity, subscriber) {
   };
 }
 
+// Distinct people who opened this user's profile in the last 30 days, most recent first.
+// Only subscribers receive who they are; everyone gets the count.
+async function recentViewers(userId, subscriber) {
+  const [result] = await ProfileView.aggregate([
+    {$match: {viewed: userId, updatedAt: {$gte: new Date(Date.now() - VIEWS_WINDOW_DAYS * DAY_MS)}}},
+    {$group: {_id: "$viewer", lastViewedAt: {$max: "$updatedAt"}}},
+    {$lookup: {from: "users", localField: "_id", foreignField: "_id", as: "user", pipeline: [{$match: {status: "active"}}, {$project: {_id: 1}}]}},
+    {$match: {"user.0": {$exists: true}}},
+    {$sort: {lastViewedAt: -1}},
+    {$facet: {count: [{$count: "value"}], recent: [{$limit: 30}]}},
+  ]);
+  const count = result?.count[0]?.value || 0;
+  if (!subscriber || !count) return {count, people: []};
+  const ids = result.recent.map(row => row._id);
+  const people = await User.find({_id: {$in: ids}}).select(CARD_FIELDS).lean();
+  const order = new Map(ids.map((id, index) => [String(id), index]));
+  people.sort((a, b) => order.get(String(a._id)) - order.get(String(b._id)));
+  return {count, people};
+}
+
 const getSpecialHome = async (req, res) => {
   try {
     const me = req.auth.user;
@@ -63,10 +85,11 @@ const getSpecialHome = async (req, res) => {
       ]),
     ]);
     const match = await matchState(me, activity, subscriber);
-    // Free users learn how many people favourited them; MILO Connect shows who.
+    // Free users learn how many people liked or viewed them; MILO Connect shows who.
     const admirers = subscriber && admirerCount
       ? await User.find({favourites: me._id, status: "active"}).select(CARD_FIELDS).sort({isOnline: -1, lastSeen: -1}).limit(30).lean()
       : [];
+    const viewers = await recentViewers(me._id, subscriber);
 
     return res.json({
       success: true,
@@ -77,6 +100,7 @@ const getSpecialHome = async (req, res) => {
         rooms: roomCounts(),
         onlineNow: req.app.get("onlineUserCount")?.() ?? 0,
         admirers: {count: admirerCount, people: admirers},
+        viewers,
         question: {
           text: questionOfTheDay(),
           myAnswer: myAnswer?.answer || null,

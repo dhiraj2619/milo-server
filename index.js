@@ -23,6 +23,7 @@ const { getFirebaseAuth } = require("./config/firebaseAdmin");
 const User = require("./models/User.model");
 const { registerCallHandlers } = require("./sockets/call.socket");
 const { registerMatchHandlers } = require("./sockets/match.socket");
+const { startNotificationWorker } = require("./services/notify.service");
 const app = express();
 
 const port = PORT;
@@ -36,6 +37,11 @@ const io = new Server(server, {
 });
 
 const activeSocketsByUser = new Map();
+// True when one of the user's connected devices has the app on screen.
+const isUserInApp = uid => [...(activeSocketsByUser.get(uid) || [])].some(id => io.sockets.sockets.get(id)?.data.inApp);
+
+// Sends the delayed "liked your profile" pushes.
+startNotificationWorker({ isUserInApp });
 
 app.set('io', io);
 // Live "online now" count for the admin dashboard.
@@ -94,7 +100,7 @@ io.on("connection", async (socket) => {
   // Registered before any await so early call events are not missed.
   registerCallHandlers(io, socket, {
     isUserOnline: uid => activeSocketsByUser.has(uid),
-    isUserInApp: uid => [...(activeSocketsByUser.get(uid) || [])].some(id => io.sockets.sockets.get(id)?.data.inApp),
+    isUserInApp,
   });
   registerMatchHandlers(io, socket);
 
