@@ -6,6 +6,8 @@ const {
   updateMyProfile,
   getDiscoverProfiles,
   getLanguages,
+  registerPushToken,
+  removePushToken,
   adminListUsers,
   adminBlockUser,
   adminDeleteUser,
@@ -16,6 +18,8 @@ router.get("/me", getMyProfile);
 router.patch("/me", updateMyProfile);
 router.get("/discover", getDiscoverProfiles);
 router.get("/languages", getLanguages);
+router.put("/me/push-token", registerPushToken);
+router.delete("/me/push-token", removePushToken);
 
 router.get("/admin", requireEnvironmentAdmin, adminListUsers);
 router.patch("/admin/:id/block", requireEnvironmentAdmin, adminBlockUser);

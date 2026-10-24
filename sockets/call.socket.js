@@ -1,9 +1,14 @@
 const crypto = require("crypto");
 const User = require("../models/User.model");
 const Call = require("../models/Call.model");
+const {sendToUser} = require("../services/push.service");
 
 // Socket.IO only carries call signaling (invite/accept/end and WebRTC
 // offer/answer/ICE). Audio and video flow peer-to-peer over WebRTC.
+//
+// If the callee has the app open, the call reaches them over the socket. If the
+// app is in the background or closed, they also get a push notification; opening
+// the app while the call is still ringing re-delivers it over the new socket.
 //
 // Call state lives in memory, so this works on a single server instance.
 // Running several instances needs a shared store such as the Redis adapter.
@@ -40,8 +45,24 @@ const publicPeer = user => ({
   photoUrl: user.photoUrl,
 });
 
-function registerCallHandlers(io, socket, {isUserOnline}) {
+const incomingPayload = call => ({
+  callId: call.id,
+  callType: call.callType,
+  caller: publicPeer(call.caller),
+  iceServers: iceServers(),
+});
+
+const callTypeLabel = call => (call.callType === "video" ? "video" : "audio");
+
+function registerCallHandlers(io, socket, {isUserOnline, isUserInApp}) {
   const uid = socket.firebaseUser.uid;
+
+  // The app was opened (often from the call notification) while a call is ringing for this user.
+  const ringing = calls.get(callIdByUser.get(uid));
+  if (ringing && ringing.calleeUid === uid && ringing.status === "ringing") {
+    socket.emit("call:incoming", incomingPayload(ringing));
+    io.to(ringing.callerSocketId).emit("call:ringing", {callId: ringing.id});
+  }
 
   const findOwnCall = callId => {
     const call = calls.get(callId);
@@ -59,7 +80,6 @@ function registerCallHandlers(io, socket, {isUserOnline}) {
       if (!callee) return ack({ok: false, reason: "not_found"});
       if (callee.firebaseUid === uid) return ack({ok: false, reason: "invalid"});
       if (callIdByUser.has(uid)) return ack({ok: false, reason: "already_in_call"});
-      if (!isUserOnline(callee.firebaseUid)) return ack({ok: false, reason: "offline"});
       if (callIdByUser.has(callee.firebaseUid)) return ack({ok: false, reason: "busy"});
 
       const call = {
@@ -81,14 +101,28 @@ function registerCallHandlers(io, socket, {isUserOnline}) {
       callIdByUser.set(call.callerUid, call.id);
       callIdByUser.set(call.calleeUid, call.id);
 
-      const servers = iceServers();
-      io.to(call.calleeUid).emit("call:incoming", {
-        callId: call.id,
-        callType,
-        caller: publicPeer(caller),
-        iceServers: servers,
-      });
-      return ack({ok: true, callId: call.id, callee: publicPeer(callee), iceServers: servers});
+      // Background sockets may still be alive, so always try the socket too.
+      const payload = incomingPayload(call);
+      io.to(call.calleeUid).emit("call:incoming", payload);
+
+      // "ringing": the callee's screen is showing the call. "calling": we are waiting for them to open the app.
+      let delivery = "ringing";
+      if (!isUserInApp(call.calleeUid)) {
+        const devices = await sendToUser(callee._id, {
+          title: caller.nickname || "MILO",
+          body: `Incoming ${callTypeLabel(call)} call. Tap to answer`,
+          data: {type: "call", callId: call.id, callType},
+          channelId: "calls",
+          tag: `call-${call.id}`,
+          ttlMs: RING_TIMEOUT_MS,
+        });
+        if (!devices && !isUserOnline(call.calleeUid)) {
+          finishCall(io, call.id, "offline");
+          return ack({ok: false, reason: "offline"});
+        }
+        delivery = "calling";
+      }
+      return ack({ok: true, callId: call.id, callee: publicPeer(callee), iceServers: payload.iceServers, delivery});
     } catch (error) {
       console.error("call:invite error:", error);
       return ack({ok: false, reason: "error"});
@@ -147,7 +181,10 @@ const STATUS_BY_REASON = {
   no_answer: "missed",
   rejected: "rejected",
   cancelled: "cancelled",
+  offline: "missed",
 };
+// Outcomes the callee should hear about later.
+const MISSED_REASONS = ["no_answer", "cancelled"];
 
 function finishCall(io, callId, reason) {
   const call = calls.get(callId);
@@ -161,6 +198,16 @@ function finishCall(io, callId, reason) {
 
   const endedAt = new Date();
   const answered = Boolean(call.answeredAt);
+  // Same tag as the incoming-call push, so it replaces it on the callee's phone.
+  if (!answered && MISSED_REASONS.includes(reason)) {
+    sendToUser(call.callee._id, {
+      title: "Missed call",
+      body: `${call.caller.nickname || "Someone"} tried to ${callTypeLabel(call)} call you`,
+      data: {type: "missed_call", callId, callerId: String(call.caller._id)},
+      channelId: "missed_calls",
+      tag: `call-${callId}`,
+    });
+  }
   Call.create({
     callId,
     caller: call.caller._id,

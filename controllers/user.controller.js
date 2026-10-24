@@ -200,6 +200,41 @@ const getDiscoverProfiles = async (req, res) => {
   }
 };
 
+const MAX_PUSH_TOKENS = 5;
+const validPushToken = token => typeof token === "string" && token.length > 20 && token.length < 4096;
+
+const registerPushToken = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const token = req.body?.token;
+    if (!validPushToken(token)) return res.status(400).json({ success: false, message: "Invalid push token." });
+    // A device token belongs to whoever signed in on it last.
+    await User.updateMany({ pushTokens: token, firebaseUid: { $ne: decoded.uid } }, { $pull: { pushTokens: token } });
+    // Newest last; only the most recent devices are kept.
+    await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { pushTokens: token } });
+    const result = await User.updateOne(
+      { firebaseUid: decoded.uid },
+      { $push: { pushTokens: { $each: [token], $slice: -MAX_PUSH_TOKENS } } },
+    );
+    if (!result.matchedCount) return res.status(404).json({ success: false, message: "Profile not found." });
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
+const removePushToken = async (req, res) => {
+  try {
+    const decoded = await verifyRequestToken(req);
+    const token = req.body?.token;
+    if (!validPushToken(token)) return res.status(400).json({ success: false, message: "Invalid push token." });
+    await User.updateOne({ firebaseUid: decoded.uid }, { $pull: { pushTokens: token } });
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(error.status || 401).json({ success: false, message: error.status ? error.message : "Invalid session." });
+  }
+};
+
 const getLanguages = (_req, res) => res.json({ success: true, data: { languages: ALLOWED_LANGUAGES } });
 
 const adminListUsers = async (_req, res) => {
@@ -237,6 +272,8 @@ module.exports = {
   updateMyProfile,
   getDiscoverProfiles,
   getLanguages,
+  registerPushToken,
+  removePushToken,
   adminListUsers,
   adminBlockUser,
   adminDeleteUser,

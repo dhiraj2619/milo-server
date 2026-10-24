@@ -78,9 +78,16 @@ io.on("connection", async (socket) => {
 
   activeSocketsByUser.get(firebaseUid).add(socket.id);
 
+  // Whether the app is on screen; older clients don't send it, so assume they are.
+  socket.data.inApp = socket.handshake.auth?.inApp !== false;
+  socket.on("app:state", ({ inApp } = {}) => {
+    socket.data.inApp = inApp === true;
+  });
+
   // Registered before any await so early call events are not missed.
   registerCallHandlers(io, socket, {
     isUserOnline: uid => activeSocketsByUser.has(uid),
+    isUserInApp: uid => [...(activeSocketsByUser.get(uid) || [])].some(id => io.sockets.sockets.get(id)?.data.inApp),
   });
 
   await User.updateOne(

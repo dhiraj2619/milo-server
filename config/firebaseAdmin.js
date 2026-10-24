@@ -1,12 +1,13 @@
 ﻿const {getApps, initializeApp, cert} = require("firebase-admin/app");
 const {getAuth} = require("firebase-admin/auth");
+const {getMessaging} = require("firebase-admin/messaging");
 const {
   FIREBASE_PROJECT_ID,
   FIREBASE_CLIENT_EMAIL,
   FIREBASE_PRIVATE_KEY,
 } = require("./config");
 
-function getFirebaseAuth() {
+function getFirebaseApp() {
   let app = getApps().find(existing => existing.name === "[DEFAULT]");
 
   if (!app) {
@@ -32,7 +33,10 @@ function getFirebaseAuth() {
     });
   }
 
-  return getAuth(app);
+  return app;
 }
 
-module.exports = {getFirebaseAuth};
+const getFirebaseAuth = () => getAuth(getFirebaseApp());
+const getFirebaseMessaging = () => getMessaging(getFirebaseApp());
+
+module.exports = {getFirebaseAuth, getFirebaseMessaging};

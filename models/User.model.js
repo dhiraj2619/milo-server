@@ -54,6 +54,8 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // FCM registration tokens, one per signed-in device. Used to reach users whose app is closed.
+    pushTokens: {type: [String], default: [], select: false},
 
     isVerified: {
       type: Boolean,
